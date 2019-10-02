@@ -32,4 +32,5 @@ except ImportError:
     pass
 
 # import any pure python here
+from .fast_autocorrelator import fast_autocorrelator_c, fast_autocorrelator_f
 #

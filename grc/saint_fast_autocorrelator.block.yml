@@ -1,0 +1,45 @@
+id: saint_fast_autocorrelator
+label: Fast Autocorrelator
+category: '[Saint]'
+flags: [python]
+
+parameters:
+- id: type
+  label: Type
+  dtype: enum
+  default: complex
+  options: [complex, float]
+  option_attributes:
+    fcn: [fast_autocorrelator_c, fast_autocorrelator_f]
+    t: [complex, float]
+  hide: part
+- id: sample_rate
+  label: Sample Rate
+  dtype: int
+  default: 1
+- id: fac_size
+  label: Fast Autocorrelation Size
+  dtype: int
+  default: 512
+- id: fac_rate
+  label: Fast Autocorrelation Rate
+  dtype: int
+  default: 10
+
+inputs:
+- label: in
+  domain: stream
+  dtype: ${ type.t }
+  vlen: 1
+ 
+outputs:
+- label: out
+  domain: stream
+  dtype: float
+  vlen: 1
+
+templates:
+  imports: import saint
+  make: saint.${type.fcn}(${sample_rate}, ${fac_size}, ${fac_rate})
+
+file_format: 1
