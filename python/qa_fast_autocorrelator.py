@@ -4,7 +4,10 @@
 
 from gnuradio import gr, gr_unittest
 from gnuradio import blocks
-from fast_autocorrelator import fast_autocorrelator
+from fast_autocorrelator import fast_autocorrelator_c, fast_autocorrelator_f
+import numpy
+import struct
+import math
 
 class qa_fast_autocorrelator(gr_unittest.TestCase):
 
@@ -16,6 +19,12 @@ class qa_fast_autocorrelator(gr_unittest.TestCase):
 
     def test_001_t(self):
         # set up fg
+        src_data = numpy.zeros(1024 * 4)
+        src = blocks.vector_source_f(src_data)
+        fac = fast_autocorrelator_f(1, 256, 10)
+        snk = blocks.vector_sink_f()
+        self.tb.connect(src, fac)
+        self.tb.connect(fac, snk)
         self.tb.run()
         # check data
 
