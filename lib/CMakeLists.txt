@@ -24,6 +24,7 @@
 include(GrPlatform) #define LIB_SUFFIX
 
 list(APPEND saint_sources
+    burst_message_multiplexer_impl.cc
 )
 
 set(saint_sources "${saint_sources}" PARENT_SCOPE)

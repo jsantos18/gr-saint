@@ -19,5 +19,6 @@
 # Boston, MA 02110-1301, USA.
 
 install(FILES
-    saint_fast_autocorrelator.block.yml DESTINATION share/gnuradio/grc/blocks
+    saint_fast_autocorrelator.block.yml
+    saint_burst_message_multiplexer.block.yml DESTINATION share/gnuradio/grc/blocks
 )

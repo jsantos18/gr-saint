@@ -1,0 +1,29 @@
+id: saint_burst_message_multiplexer
+label: Burst Message Multiplexer
+category: '[Saint]'
+
+templates:
+  imports: import saint
+  make: saint.burst_message_multiplexer(${sample_rate}, ${worker_threads})
+
+parameters:
+- id: sample_rate
+  label: Sample Rate
+  dtype: int
+  default: samp_rate
+- id: worker_threads
+  label: Worker Threads
+  dtype: int
+  default: 4
+
+inputs:
+- label: in
+  domain: message
+  optional: true
+
+outputs:
+- label: out
+  domain: stream
+  dtype: complex
+
+file_format: 1
