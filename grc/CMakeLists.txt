@@ -20,5 +20,6 @@
 
 install(FILES
     saint_fast_autocorrelator.block.yml
-    saint_burst_message_multiplexer.block.yml DESTINATION share/gnuradio/grc/blocks
+    saint_burst_message_multiplexer.block.yml
+    saint_stream_to_burst_message.block.yml DESTINATION share/gnuradio/grc/blocks
 )

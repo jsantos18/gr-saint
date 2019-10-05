@@ -23,5 +23,6 @@
 ########################################################################
 install(FILES
     api.h
-    burst_message_multiplexer.h DESTINATION include/saint
+    burst_message_multiplexer.h
+    stream_to_burst_message.h DESTINATION include/saint
 )
