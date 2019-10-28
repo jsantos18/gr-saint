@@ -4,7 +4,7 @@ category: '[Saint]'
 
 templates:
   imports: import saint
-  make: saint.burst_message_multiplexer(${sample_rate}, ${worker_threads})
+  make: saint.burst_message_multiplexer(${sample_rate}, ${worker_threads}, ${burst_size})
 
 parameters:
 - id: sample_rate
@@ -15,6 +15,10 @@ parameters:
   label: Worker Threads
   dtype: int
   default: 4
+- id: burst_size
+  label: Burst Size
+  dtype: int
+  default: 1024
 
 inputs:
 - label: in

@@ -702,10 +702,9 @@ namespace gr {
        * class. saint::stream_to_burst_message::make is the public interface for
        * creating new instances.
        */
-      static sptr make(double freq_offset, uint64_t delay, uint16_t burst_size);
+      static sptr make(double freq_offset, uint16_t burst_size);
       
       virtual void set_freq(double freq_offset) = 0;
-      virtual void set_delay(uint64_t delay) = 0;
     };
 
   } // namespace saint

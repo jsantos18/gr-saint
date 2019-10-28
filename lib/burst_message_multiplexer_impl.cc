@@ -686,33 +686,38 @@ namespace gr {
   namespace saint {
 
     burst_message_multiplexer::sptr
-    burst_message_multiplexer::make(int sample_rate, int worker_threads)
+    burst_message_multiplexer::make(int sample_rate, int worker_threads, int burst_size)
     {
       return gnuradio::get_initial_sptr
-        (new burst_message_multiplexer_impl(sample_rate, worker_threads));
+        (new burst_message_multiplexer_impl(sample_rate, worker_threads, burst_size));
     }
 
 
     /*
      * The private constructor
      */
-    burst_message_multiplexer_impl::burst_message_multiplexer_impl(int sample_rate, int worker_threads)
+    burst_message_multiplexer_impl::burst_message_multiplexer_impl(int sample_rate, int worker_threads, int burst_size)
       : gr::sync_block("burst_message_multiplexer",
               gr::io_signature::make(0, 0, 0),
               gr::io_signature::make(1, 1, sizeof(gr_complex))),
+        d_sample_rate(sample_rate),
+        d_burst_size(burst_size),
         bmm_workers_(worker_threads),
         bmm_thread_exit_(false)
     {
       message_port_register_in(pmt::mp("in"));
       set_msg_handler(pmt::mp("in"), boost::bind(&burst_message_multiplexer_impl::handler, this, _1));
 
-      set_min_noutput_items(1024);
-      set_max_noutput_items(1024);
+      set_min_noutput_items(std::max(burst_size, 512));
+      set_max_noutput_items(std::max(burst_size, 512));
 
       for (size_t i = 0; i < bmm_workers_.size(); ++i)
       {
         bmm_workers_[i] = boost::thread(&burst_message_multiplexer_impl::worker_thread, this);
       }
+
+      d_time_per_samp = (1.0 / double(sample_rate));
+      time_start = false;
     }
 
     /*
@@ -739,9 +744,10 @@ namespace gr {
         pmt::pmt_t pmt_freq = pmt::dict_ref(dict, pmt::mp("freq"), pmt::PMT_NIL);
         pmt::pmt_t pmt_samp = pmt::dict_ref(dict, pmt::mp("samples"), pmt::PMT_NIL);
 
-        if (pmt::is_uint64(pmt_time) && pmt::is_number(pmt_freq) && pmt::is_c32vector(pmt_samp))
+        if (pmt::is_pair(pmt_time) && pmt::is_number(pmt_freq) && pmt::is_c32vector(pmt_samp))
         {
-          return std::make_tuple(pmt::to_uint64(pmt_time), pmt::to_double(pmt_freq), pmt::c32vector_elements(pmt_samp));
+          uhd::time_spec_t tuple_time(pmt::to_uint64(pmt::car(pmt_time)), pmt::to_double(pmt::cdr(pmt_time)));
+          return std::make_tuple(tuple_time, pmt::to_double(pmt_freq), pmt::c32vector_elements(pmt_samp));
         }
         else
         {
@@ -754,6 +760,120 @@ namespace gr {
         throw std::runtime_error("PMT input was not of the correct dict format {time:x, freq:y, samples:z}.");
       }
       
+    }
+
+    std::vector<gr_complex>
+    burst_message_multiplexer_impl::shift_frequency(double freq, std::vector<gr_complex> samples)
+    {
+      gr::fxpt_nco nco;
+      nco.set_freq(2 * M_PI * freq / double(d_sample_rate));
+      nco.set_phase(0);
+
+      gr_complex shift[samples.size()];
+      nco.sincos(shift, samples.size(), 1);
+
+      volk_32fc_x2_multiply_32fc(shift, shift, samples.data(), samples.size());
+
+      std::vector<gr_complex> out(shift, shift + samples.size());
+      return out;
+    }
+
+    int
+    burst_message_multiplexer_impl::compare_samples(uint64_t sample)
+    {
+      return sample - nitems_written(0);
+    }
+
+    uint32_t
+    burst_message_multiplexer_impl::get_data_ready()
+    {
+      uint32_t data = 0;
+
+      // Increases processing speed
+      if (bmm_bursts.empty())
+      {
+        return data;
+      }
+
+      // TODO: Can we assume that the front is always the first?
+      // Should there be a sort before doing this operation?
+      // Should multiple points of data be pulled?
+      burst_mutex_.lock();
+      auto [burst_sample, burst] = bmm_bursts.front();
+      burst_mutex_.unlock();
+
+      // Deliberate whether it should be used or not
+      // Use Burst Size or 512 whichever is larger
+      // Assume nitems_written to niw + burst_size is now
+      uhd::time_spec_t burst_start = d_start_time + uhd::time_spec_t(nitems_written(0) * d_time_per_samp);
+      uhd::time_spec_t burst_1_end = burst_start + uhd::time_spec_t(d_burst_size * d_time_per_samp);
+
+      // If the burst is less then the start then throw it away its late
+      if (burst_sample < burst_start)
+      {
+        burst_mutex_.lock();
+        bmm_bursts.pop();
+        burst_mutex_.unlock();
+        std::cerr << "D " << (burst_start - burst_sample).get_real_secs() << std::endl;
+        return data;
+      }
+      // If there burst is in the first burst then add to the burst output
+      // Also return how many samples of it were in there
+      else if (burst_sample >= burst_start && burst_sample < burst_1_end)
+      {
+        // The vector that added using volk to the current output
+        std::vector<gr_complex> burst_vec;
+
+        // Modify data so it fits correct offset 
+        uint32_t zeros = int((burst_sample - burst_start).get_real_secs() / d_time_per_samp);
+        if (zeros != 0)
+        {
+          burst_vec = std::vector<gr_complex>(zeros, gr_complex(0, 0));
+        }
+
+        // Find slice of data to be added
+        uint32_t data_to_write_to = int((burst_1_end - burst_sample).get_real_secs() / d_time_per_samp) - 1;
+        uint32_t burst_size = burst.size();
+
+        // If the burst is smaller than the area to write to
+        // Then write data and append zeros
+        if (burst_size < data_to_write_to)
+        {
+          burst_vec.insert(burst_vec.end(), burst.begin(), burst.end());
+          burst_vec.insert(burst_vec.end(), data_to_write_to - burst_size, gr_complex(0, 0));
+        }
+        // If the data is the same as the area to write to
+        // Then write data only
+        else if (burst_size == data_to_write_to)
+        {
+          burst_vec.insert(burst_vec.end(), burst.begin(), burst.end());
+        }
+        // If the data is greater than the area to write to
+        else if (burst_size > data_to_write_to)
+        {
+          burst_vec.insert(burst_vec.end(), burst.begin(), burst.begin() + data_to_write_to);
+          
+          // Change the burst size to fit the data to write to
+          burst_size = data_to_write_to;
+
+          // Move the remaining burst to a new burst pair
+          std::vector<gr_complex> new_burst(burst.begin() + data_to_write_to, burst.end());
+          burst_mutex_.lock();
+          bmm_bursts.push(std::make_pair(burst_1_end, new_burst));
+          burst_mutex_.unlock();
+        }
+
+        // Add this burst vector to a vector of burst vectors to later add together
+        bmm_bursts_ready.push_back(burst_vec);
+
+        // Pop off this from the original queue
+        bmm_bursts.pop();
+        
+        // Tell the data how much was produced for that
+        data = burst_size;
+      }
+
+      return data;
     }
 
     void
@@ -771,13 +891,22 @@ namespace gr {
           lock.unlock();
           try
           {
-            auto burst_info = decode_dict(dict);
+            decode_type burst = decode_dict(dict);
+            if (int(burst.freq) != 0)
+            {
+              burst.samples = shift_frequency(burst.freq, burst.samples);
+            }
+            auto bp = std::make_pair(burst.time, burst.samples);
+            burst_mutex_.lock();
+            bmm_bursts.push(bp);
+            burst_mutex_.unlock();
           }
           catch (const std::exception& e)
           {
             std::cerr << e.what() << std::endl;
           }
           lock.lock();
+          
         }
       }
     }
@@ -796,8 +925,42 @@ namespace gr {
     {
       gr_complex *out = (gr_complex *) output_items[0];
 
+      // Get the original start
+      if (!time_start)
+      {
+        double time_now = double(boost::chrono::system_clock::now().time_since_epoch().count()) / 1e9;
+        d_start_time = uhd::time_spec_t(time_now);
+        time_start = true;
+      }
+
       // Do <+signal processing+>
-      memset(out, 0, noutput_items);
+      // Always set the current samples out to be zeros
+      memset(out, 0, sizeof(gr_complex) * noutput_items);
+
+      // If there are no bursts ready then dont add anything
+      if (bmm_bursts_ready.empty())
+      {
+        if (bmm_bursts.empty())
+        {
+          // Do nothing
+        }
+        else
+        {
+          get_data_ready();
+        }
+        
+      }
+      else
+      {
+        // If there are burst ready to be sent then get offset and apply
+        // Run get_data_ready() incase a sample overlaps
+        get_data_ready();
+
+        // Clear the bmm bursts after use
+        std::cout << bmm_bursts_ready.size() << std::endl;
+        bmm_bursts_ready.clear();
+      }
+      
 
       // Tell runtime system how many output items we produced.
       return noutput_items;

@@ -19,6 +19,11 @@
 # Boston, MA 02110-1301, USA.
 
 ########################################################################
+# Making Sure UHD is installed
+########################################################################
+find_package(UHD "3.15.0")
+
+########################################################################
 # Setup library
 ########################################################################
 include(GrPlatform) #define LIB_SUFFIX
@@ -35,7 +40,7 @@ if(NOT saint_sources)
 endif(NOT saint_sources)
 
 add_library(gnuradio-saint SHARED ${saint_sources})
-target_link_libraries(gnuradio-saint gnuradio::gnuradio-runtime)
+target_link_libraries(gnuradio-saint gnuradio::gnuradio-runtime ${UHD_LIBRARIES})
 target_include_directories(gnuradio-saint
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
     PUBLIC $<INSTALL_INTERFACE:include>

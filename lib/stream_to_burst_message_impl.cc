@@ -686,22 +686,22 @@ namespace gr {
   namespace saint {
 
     stream_to_burst_message::sptr
-    stream_to_burst_message::make(double freq_offset, uint64_t delay, uint16_t burst_size)
+    stream_to_burst_message::make(double freq_offset, uint16_t burst_size)
     {
       return gnuradio::get_initial_sptr
-        (new stream_to_burst_message_impl(freq_offset, delay, burst_size));
+        (new stream_to_burst_message_impl(freq_offset, burst_size));
     }
 
 
     /*
      * The private constructor
      */
-    stream_to_burst_message_impl::stream_to_burst_message_impl(double freq_offset, uint64_t delay, uint16_t burst_size)
+    stream_to_burst_message_impl::stream_to_burst_message_impl(double freq_offset, uint16_t burst_size)
       : gr::sync_block("stream_to_burst_message",
               gr::io_signature::make(1, 1, sizeof(gr_complex)),
               gr::io_signature::make(0, 0, 0)),
         d_freq_offset(freq_offset),
-        d_delay(d_delay)
+        d_bursts_made(0)
     {
       message_port_register_out(pmt::mp("out"));
 
@@ -724,11 +724,14 @@ namespace gr {
 
       // Do <+signal processing+>
       std::vector<gr_complex> out(in, in + noutput_items);
-      uint64_t boost_time = boost::chrono::system_clock::now().time_since_epoch().count();
-      boost_time += d_delay;
+
+      // Make time pair some time in the future
+      double time_now = double(boost::chrono::system_clock::now().time_since_epoch().count()) / 1e9;
+      uhd::time_spec_t uhd_time(time_now);
+      pmt::pmt_t pmt_time = pmt::cons(pmt::from_uint64(uhd_time.get_full_secs()), pmt::from_double(uhd_time.get_frac_secs()));
       
       pmt::pmt_t burst_dict = pmt::make_dict();
-      burst_dict = pmt::dict_add(burst_dict, pmt::mp("time"), pmt::from_uint64(boost_time));
+      burst_dict = pmt::dict_add(burst_dict, pmt::mp("time"), pmt_time);
       burst_dict = pmt::dict_add(burst_dict, pmt::mp("freq"), pmt::from_double(d_freq_offset));
       burst_dict = pmt::dict_add(burst_dict, pmt::mp("samples"), pmt::init_c32vector(out.size(), out));
 

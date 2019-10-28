@@ -678,20 +678,42 @@
 #ifndef INCLUDED_SAINT_BURST_MESSAGE_MULTIPLEXER_IMPL_H
 #define INCLUDED_SAINT_BURST_MESSAGE_MULTIPLEXER_IMPL_H
 
+#include <gnuradio/fxpt_nco.h>
+#include <uhd/types/time_spec.hpp>
 #include <saint/burst_message_multiplexer.h>
+#include <volk/volk.h>
 #include <boost/thread.hpp>
 #include <tuple>
 #include <queue>
 
 #define queue_type std::queue<pmt::pmt_t>
-#define decode_tuple std::tuple<uint64_t, double, std::vector<gr_complex>>
+#define burst_pair std::pair<uhd::time_spec_t, std::vector<gr_complex>>
 
 namespace gr {
   namespace saint {
 
+    struct decode_type
+    {
+      uhd::time_spec_t time;
+      double freq;
+      std::vector<gr_complex> samples;
+    };
+
     class burst_message_multiplexer_impl : public burst_message_multiplexer
     {
      private:
+      // Member Variables
+      bool time_start;
+      int d_sample_rate;
+      int d_burst_size;
+      uhd::time_spec_t d_start_time;
+      double d_time_per_samp;
+
+      // Output variables
+      std::vector<std::vector<gr_complex>> bmm_bursts_ready;
+      std::queue<burst_pair> bmm_bursts;
+      boost::mutex burst_mutex_;
+
       // Threading Variables
       std::vector<boost::thread> bmm_workers_;
       boost::condition_variable bmm_cv_;
@@ -702,12 +724,33 @@ namespace gr {
       /**
        * @brief PMT Dictionary Decoding
        * @param dict A PMT Dictionary ("time", "freq shift", "samples")
-       * @return decode_tuple A decoded tuple of uint time, double freq, gr_cplx_vec samples
+       * @return decode_type A decoded tuple of uint time, double freq, gr_cplx_vec samples
        */
-      decode_tuple decode_dict(pmt::pmt_t dict);
+      decode_type decode_dict(pmt::pmt_t dict);
+
+      /**
+       * @brief Shifts a waveform by x frequency
+       * @param freq The frequency to be shifted by
+       * @param samples The samples to be shifted
+       * @return std::vector<gr_complex> The shifted frequency sample
+       */
+      std::vector<gr_complex> shift_frequency(double freq, std::vector<gr_complex> samples);
+
+      /**
+       * @brief Compares times and decides if it falls in the interval
+       * @param sample The sample the burst starts at
+       * @return int The sample to start the burst at
+       */
+      int compare_samples(uint64_t sample);
+
+      /**
+       * @brief Unqueues the data from the bmm bursts if it is time ready
+       * @return uint32_t the amount of burst that is gonna be produced next time
+       */
+      uint32_t get_data_ready();
 
      public:
-      burst_message_multiplexer_impl(int sample_rate, int worker_threads);
+      burst_message_multiplexer_impl(int sample_rate, int worker_threads, int burst_size);
       ~burst_message_multiplexer_impl();
 
       /**

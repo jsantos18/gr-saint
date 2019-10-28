@@ -702,7 +702,7 @@ namespace gr {
        * class. saint::burst_message_multiplexer::make is the public interface for
        * creating new instances.
        */
-      static sptr make(int sample_rate, int worker_threads);
+      static sptr make(int sample_rate, int worker_threads, int burst_size);
     };
 
   } // namespace saint

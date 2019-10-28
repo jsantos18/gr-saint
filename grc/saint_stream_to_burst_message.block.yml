@@ -4,18 +4,14 @@ category: '[Saint]'
 
 templates:
   imports: import saint
-  make: saint.stream_to_burst_message(${freq_offset}, ${delay}, ${burst_size})
+  make: saint.stream_to_burst_message(${freq_offset}, ${burst_size})
   callbacks:
   - set_freq(${freq_offset})
-  - set_delay(${delay})
 
 parameters:
 - id: freq_offset
   label: Frequency Offset
   dtype: float
-- id: delay
-  label: Delay
-  dtype: int
 - id: burst_size
   label: Burst Size
   dtype: int
@@ -29,5 +25,6 @@ inputs:
 outputs:
 - label: out
   domain: message
+  optional: 1
   
 file_format: 1

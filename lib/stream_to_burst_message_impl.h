@@ -679,6 +679,7 @@
 #define INCLUDED_SAINT_STREAM_TO_BURST_MESSAGE_IMPL_H
 
 #include <saint/stream_to_burst_message.h>
+#include <uhd/types/time_spec.hpp>
 
 namespace gr {
   namespace saint {
@@ -687,11 +688,11 @@ namespace gr {
     {
      private:
       double d_freq_offset;
-      uint64_t d_delay;
       uint16_t d_burst_size;
+      uint64_t d_bursts_made;
 
      public:
-      stream_to_burst_message_impl(double freq_offset, uint64_t delay, uint16_t burst_size);
+      stream_to_burst_message_impl(double freq_offset, uint16_t burst_size);
       ~stream_to_burst_message_impl();
 
       /**
@@ -700,13 +701,6 @@ namespace gr {
        * @return void
        */
       void set_freq(double freq_offset) { d_freq_offset = freq_offset; }
-
-      /**
-       * @brief Callback Function to set the delay
-       * @param delay a uint64_t positive time delay
-       * @return void
-       */
-      void set_delay(uint64_t delay) { d_delay = delay; }
 
       // Where all the action really happens
       int work(int noutput_items,
