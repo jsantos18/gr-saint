@@ -32,7 +32,8 @@ endif()
 GR_PYTHON_INSTALL(
     FILES
     __init__.py
-    fast_autocorrelator.py DESTINATION ${GR_PYTHON_DIR}/saint
+    fast_autocorrelator.py
+    qam_odd.py DESTINATION ${GR_PYTHON_DIR}/saint
 )
 
 ########################################################################
