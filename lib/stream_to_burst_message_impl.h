@@ -688,11 +688,14 @@ namespace gr {
     {
      private:
       double d_freq_offset;
-      uint16_t d_burst_size;
+      uint32_t d_burst_size;
       uint64_t d_bursts_made;
 
+      // Vector for outputting the sample
+      std::vector<gr_complex> d_burst_out;
+
      public:
-      stream_to_burst_message_impl(double freq_offset, uint16_t burst_size);
+      stream_to_burst_message_impl(double freq_offset, uint32_t burst_size);
       ~stream_to_burst_message_impl();
 
       /**

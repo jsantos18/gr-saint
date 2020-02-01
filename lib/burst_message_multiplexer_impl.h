@@ -711,7 +711,7 @@ namespace gr {
 
       // Output variables
       std::vector<std::vector<gr_complex>> bmm_bursts_ready;
-      std::queue<burst_pair> bmm_bursts;
+      std::list<burst_pair> bmm_bursts;
       boost::mutex burst_mutex_;
 
       // Threading Variables

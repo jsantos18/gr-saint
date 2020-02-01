@@ -686,7 +686,7 @@ namespace gr {
   namespace saint {
 
     stream_to_burst_message::sptr
-    stream_to_burst_message::make(double freq_offset, uint16_t burst_size)
+    stream_to_burst_message::make(double freq_offset, uint32_t burst_size)
     {
       return gnuradio::get_initial_sptr
         (new stream_to_burst_message_impl(freq_offset, burst_size));
@@ -696,12 +696,13 @@ namespace gr {
     /*
      * The private constructor
      */
-    stream_to_burst_message_impl::stream_to_burst_message_impl(double freq_offset, uint16_t burst_size)
+    stream_to_burst_message_impl::stream_to_burst_message_impl(double freq_offset, uint32_t burst_size)
       : gr::sync_block("stream_to_burst_message",
               gr::io_signature::make(1, 1, sizeof(gr_complex)),
               gr::io_signature::make(0, 0, 0)),
         d_freq_offset(freq_offset),
-        d_bursts_made(0)
+        d_bursts_made(0),
+        d_burst_size(burst_size)
     {
       message_port_register_out(pmt::mp("out"));
 
@@ -723,19 +724,31 @@ namespace gr {
       const gr_complex *in = (const gr_complex *) input_items[0];
 
       // Do <+signal processing+>
-      std::vector<gr_complex> out(in, in + noutput_items);
+      uint32_t burst_left = d_burst_size - d_burst_out.size();
 
-      // Make time pair some time in the future
-      double time_now = double(boost::chrono::system_clock::now().time_since_epoch().count()) / 1e9;
-      uhd::time_spec_t uhd_time(time_now);
-      pmt::pmt_t pmt_time = pmt::cons(pmt::from_uint64(uhd_time.get_full_secs()), pmt::from_double(uhd_time.get_frac_secs()));
-      
-      pmt::pmt_t burst_dict = pmt::make_dict();
-      burst_dict = pmt::dict_add(burst_dict, pmt::mp("time"), pmt_time);
-      burst_dict = pmt::dict_add(burst_dict, pmt::mp("freq"), pmt::from_double(d_freq_offset));
-      burst_dict = pmt::dict_add(burst_dict, pmt::mp("samples"), pmt::init_c32vector(out.size(), out));
+      // Determine to just add to burst or to overflow into another
+      if (noutput_items >= burst_left)
+      {
+        d_burst_out.insert(d_burst_out.end(), in, in + burst_left);
+        std::vector<gr_complex> next_burst(in + burst_left, in + noutput_items);
 
-      message_port_pub(pmt::mp("out"), burst_dict);
+        // Make time pair some time in the future
+        double time_now = double(boost::chrono::system_clock::now().time_since_epoch().count()) / 1e9;
+        uhd::time_spec_t uhd_time(time_now);
+        pmt::pmt_t pmt_time = pmt::cons(pmt::from_uint64(uhd_time.get_full_secs()), pmt::from_double(uhd_time.get_frac_secs()));
+        
+        pmt::pmt_t burst_dict = pmt::make_dict();
+        burst_dict = pmt::dict_add(burst_dict, pmt::mp("time"), pmt_time);
+        burst_dict = pmt::dict_add(burst_dict, pmt::mp("freq"), pmt::from_double(d_freq_offset));
+        burst_dict = pmt::dict_add(burst_dict, pmt::mp("samples"), pmt::init_c32vector(d_burst_out.size(), d_burst_out));
+
+        message_port_pub(pmt::mp("out"), burst_dict);
+        d_burst_out = next_burst;
+      }
+      else
+      {
+        d_burst_out.insert(d_burst_out.end(), in, in + noutput_items);
+      }
       
       consume_each(noutput_items);
 
